@@ -31,6 +31,7 @@ using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Serialization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Jellyfin.Plugin.PlaybackReporting.Metrics;
 
 namespace Jellyfin.Plugin.PlaybackReporting
 {
@@ -112,6 +113,22 @@ namespace Jellyfin.Plugin.PlaybackReporting
                 {
                     _logger.LogInformation("Saving playback tracking activity in DB");
                     _repository?.UpdatePlaybackAction(tracker.TrackedPlaybackInfo);
+
+                    // Metrics: record stop and observe duration
+                    try
+                    {
+                        var itemType = tracker.TrackedPlaybackInfo.ItemType;
+                        var playMethodRaw = tracker.TrackedPlaybackInfo.PlaybackMethod ?? string.Empty;
+                        var playMode = playMethodRaw.StartsWith("Transcode", StringComparison.OrdinalIgnoreCase)
+                            ? "Transcode"
+                            : playMethodRaw;
+                        double durationSeconds = tracker.TrackedPlaybackInfo.PlaybackDuration;
+                        PlaybackMetrics.RecordStop(itemType, playMode, durationSeconds);
+                    }
+                    catch (Exception mex)
+                    {
+                        _logger.LogDebug(mex, "Metrics: failed to record stop");
+                    }
                 }
                 else
                 {
@@ -272,6 +289,21 @@ namespace Jellyfin.Plugin.PlaybackReporting
 
                             _logger.LogInformation("Saving playback tracking activity in DB");
                             _repository?.AddPlaybackAction(tracker.TrackedPlaybackInfo);
+
+                            // Metrics: record start when we confirm the session matches
+                            try
+                            {
+                                var itemType = item_type;
+                                // Normalize play mode to distinct low-cardinality values
+                                var playMode = (session.PlayState?.PlayMethod == MediaBrowser.Model.Session.PlayMethod.Transcode)
+                                    ? "Transcode"
+                                    : (session.PlayState?.PlayMethod?.ToString() ?? "unknown");
+                                PlaybackMetrics.RecordStart(itemType, playMode);
+                            }
+                            catch (Exception mex)
+                            {
+                                _logger.LogDebug(mex, "Metrics: failed to record start");
+                            }
                         }
                         else
                         {

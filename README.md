@@ -27,7 +27,7 @@ This information can be viewed as a multitude of different graphs, and can also 
 
 ## Build
 
-1. To build this plugin you will need [.Net 8.x](https://dotnet.microsoft.com/download/dotnet/8.0).
+1. To build this plugin you will need [.NET 9.x](https://dotnet.microsoft.com/download/dotnet/9.0).
 
 2. Build plugin with following command
   ```
@@ -40,6 +40,36 @@ This information can be viewed as a multitude of different graphs, and can also 
 
 To release the plugin we recommend [JPRM](https://github.com/oddstr13/jellyfin-plugin-repository-manager) that will build and package the plugin.
 For additional context and for how to add the packaged plugin zip to a plugin manifest see the [JPRM documentation](https://github.com/oddstr13/jellyfin-plugin-repository-manager) for more info.
+
+## Prometheus Metrics
+
+This plugin exports lightweight playback metrics through Jellyfin's existing `/metrics` endpoint using the default prometheus-net registry. No extra container is required.
+
+Metrics (low cardinality):
+
+- `jellyfin_playback_starts_total{item_type, play_mode}`
+- `jellyfin_playback_stops_total{item_type, play_mode}`
+- `jellyfin_active_playbacks{item_type, play_mode}`
+- `jellyfin_playback_mode_starts_total{play_mode}`
+- `jellyfin_playback_mode_stops_total{play_mode}`
+- `jellyfin_active_playbacks_by_mode{play_mode}`
+- `jellyfin_playback_duration_seconds` (histogram; no labels)
+
+Label notes:
+
+- `item_type`: normalized lower-case (e.g., `video`, `audio`).
+- `play_mode`: normalized to `direct` or `transcode` when determinable; `unknown` otherwise.
+
+Example PromQL:
+
+- Active by mode: `sum by (play_mode) (jellyfin_active_playbacks_by_mode)`
+- Starts rate (5m): `sum by (play_mode) (rate(jellyfin_playback_mode_starts_total[5m]))`
+- Transcode share (5m): `100 * sum(rate(jellyfin_playback_mode_starts_total{play_mode="transcode"}[5m])) / sum(rate(jellyfin_playback_mode_starts_total[5m]))`
+- Median duration (10m): `histogram_quantile(0.5, sum(rate(jellyfin_playback_duration_seconds_bucket[10m])) by (le))`
+
+## Grafana
+
+A starter dashboard JSON is included at `grafana/PlaybackReporting-Metrics.json`. Import it and map to your Prometheus data source.
 
 ## Contributing
 
